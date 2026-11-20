@@ -1,0 +1,9 @@
+Name:     github
+Kind:     site
+Username: alice
+Password: ********
+URL:      https://github.com
+Notes:    2FA on
+Created:  2026-11-20T10:00:00Z
+Updated:  2026-11-20T10:00:00Z
+Expires:  2027-01-31

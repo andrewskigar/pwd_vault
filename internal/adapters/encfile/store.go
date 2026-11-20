@@ -39,15 +39,9 @@ type Store struct {
 // New returns a store for path that encrypts with p.
 func New(path string, p Params) *Store { return &Store{path: path, params: p} }
 
-// payload is the persistence DTO inside the ciphertext.
-type payload struct {
-	// Entries stay opaque until the domain has entries to map them to.
-	Entries []json.RawMessage `json:"entries"`
-}
-
 // Create reserves the path with O_EXCL, so an existing vault is never
 // overwritten even by a concurrent init, then writes the vault atomically.
-func (s *Store) Create(ctx context.Context, mp app.MasterPassword, _ domain.Vault) error {
+func (s *Store) Create(ctx context.Context, mp app.MasterPassword, v domain.Vault) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -64,7 +58,7 @@ func (s *Store) Create(ctx context.Context, mp app.MasterPassword, _ domain.Vaul
 	if err := reserved.Close(); err != nil {
 		return s.abandon(fmt.Errorf("create vault file: %w", err))
 	}
-	data, err := s.seal(mp, payload{Entries: []json.RawMessage{}})
+	data, err := s.seal(mp, toPayload(v))
 	if err != nil {
 		return s.abandon(err)
 	}
@@ -72,6 +66,19 @@ func (s *Store) Create(ctx context.Context, mp app.MasterPassword, _ domain.Vaul
 		return s.abandon(err)
 	}
 	return nil
+}
+
+// Save re-encrypts v with a fresh salt and nonce and atomically replaces the
+// vault file.
+func (s *Store) Save(ctx context.Context, mp app.MasterPassword, v domain.Vault) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	data, err := s.seal(mp, toPayload(v))
+	if err != nil {
+		return err
+	}
+	return s.writeAtomic(ctx, data)
 }
 
 // abandon removes the file Create reserved and returns cause.
@@ -101,12 +108,14 @@ func (s *Store) Load(ctx context.Context, mp app.MasterPassword) (domain.Vault, 
 	}
 	defer clear(plain)
 	var p payload
-	// Until entries are modelled, a payload holding any is one this version
-	// cannot restore faithfully.
-	if err := json.Unmarshal(plain, &p); err != nil || len(p.Entries) != 0 {
+	if err := json.Unmarshal(plain, &p); err != nil {
 		return domain.Vault{}, app.ErrUnlock
 	}
-	return domain.NewVault(), nil
+	v, ok := p.toVault()
+	if !ok {
+		return domain.Vault{}, app.ErrUnlock
+	}
+	return v, nil
 }
 
 func readLimited(path string) ([]byte, error) {

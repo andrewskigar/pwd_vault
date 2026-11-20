@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"save_pwd/internal/adapters/encfile"
 	"save_pwd/internal/app"
@@ -156,5 +157,117 @@ func TestCreateHonoursCancelledContext(t *testing.T) {
 	}
 	if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("stat: %v, want no file after a cancelled Create", statErr)
+	}
+}
+
+func mustEntry(t *testing.T, name string, kind domain.Kind, expires string) domain.Entry {
+	t.Helper()
+	n, err := domain.NewName(name)
+	if err != nil {
+		t.Fatalf("NewName: %v", err)
+	}
+	pw, err := domain.NewPassword("pw for " + name)
+	if err != nil {
+		t.Fatalf("NewPassword: %v", err)
+	}
+	exp, err := domain.ParseDate(expires)
+	if err != nil {
+		t.Fatalf("ParseDate: %v", err)
+	}
+	e, err := domain.NewEntry(domain.EntryFields{
+		Name:      n,
+		Kind:      kind,
+		Username:  "user of " + name,
+		Password:  pw,
+		URL:       "https://" + name + ".example",
+		Notes:     "notes for " + name,
+		CreatedAt: time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC),
+		UpdatedAt: time.Date(2026, 11, 21, 8, 30, 15, 0, time.UTC),
+		ExpiresOn: exp,
+	})
+	if err != nil {
+		t.Fatalf("NewEntry: %v", err)
+	}
+	return e
+}
+
+func assertSameFields(t *testing.T, got, want domain.EntryFields) {
+	t.Helper()
+	if got.Name.String() != want.Name.String() || got.Kind != want.Kind ||
+		got.Username != want.Username || got.Password.Reveal() != want.Password.Reveal() ||
+		got.URL != want.URL || got.Notes != want.Notes ||
+		!got.CreatedAt.Equal(want.CreatedAt) || !got.UpdatedAt.Equal(want.UpdatedAt) ||
+		got.ExpiresOn.String() != want.ExpiresOn.String() || got.ExpiresOn.IsZero() != want.ExpiresOn.IsZero() {
+		t.Fatalf("fields = %#v, want %#v", got, want)
+	}
+}
+
+func TestSaveThenLoadRoundTripsEveryField(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v.db")
+	store := newStore(path)
+	if err := store.Create(t.Context(), master("first password"), domain.NewVault()); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	withExpiry := mustEntry(t, "GitHub", domain.KindSite, "2027-01-31")
+	noExpiry := mustEntry(t, "bank", domain.KindCard, "")
+	v := domain.NewVault()
+	for _, e := range []domain.Entry{withExpiry, noExpiry} {
+		if err := v.Add(e); err != nil {
+			t.Fatalf("Add: %v", err)
+		}
+	}
+
+	if err := store.Save(t.Context(), master("first password"), v); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	loaded, err := store.Load(t.Context(), master("first password"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if loaded.Len() != 2 {
+		t.Fatalf("Len() = %d, want 2", loaded.Len())
+	}
+	for _, want := range []domain.Entry{withExpiry, noExpiry} {
+		got, err := loaded.Get(want.Name())
+		if err != nil {
+			t.Fatalf("Get(%s): %v", want.Name(), err)
+		}
+		assertSameFields(t, got.Fields(), want.Fields())
+	}
+	if leftovers, _ := filepath.Glob(filepath.Join(filepath.Dir(path), ".vault-*.tmp")); len(leftovers) != 0 {
+		t.Fatalf("temp files left behind: %v", leftovers)
+	}
+}
+
+func TestConsecutiveSavesUseFreshSaltAndNonce(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v.db")
+	store := newStore(path)
+	if err := store.Create(t.Context(), master("first password"), domain.NewVault()); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	v := domain.NewVault()
+	if err := v.Add(mustEntry(t, "github", domain.KindSite, "")); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	var raws [2][]byte
+	for i := range raws {
+		if err := store.Save(t.Context(), master("first password"), v); err != nil {
+			t.Fatalf("Save %d: %v", i, err)
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		raws[i] = raw
+	}
+
+	// Salt is bytes 21..37 and nonce 38..62 in the spec's header layout.
+	if bytes.Equal(raws[0][21:37], raws[1][21:37]) {
+		t.Error("two saves share a salt")
+	}
+	if bytes.Equal(raws[0][38:62], raws[1][38:62]) {
+		t.Error("two saves share a nonce")
 	}
 }

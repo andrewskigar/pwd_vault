@@ -107,6 +107,8 @@ func newRootCommand(d Deps) *cobra.Command {
 	locator := vaultLocator{opts: &opts, lookupEnv: d.LookupEnv, configDir: d.ConfigDir}
 
 	root.AddCommand(newInitCommand(d, locator, secrets))
+	root.AddCommand(newAddCommand(d, locator, secrets))
+	root.AddCommand(newGetCommand(d, locator, secrets))
 	return root
 }
 

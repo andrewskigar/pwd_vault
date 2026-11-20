@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -31,12 +30,8 @@ func newInitCommand(d Deps, locator vaultLocator, secrets *secretSource) *cobra.
 
 func runInit(cmd *cobra.Command, d Deps, path string, mp app.MasterPassword) error {
 	svc := app.NewService(d.NewStore(path), d.Clock)
-	err := svc.Init(cmd.Context(), mp)
-	if errors.Is(err, app.ErrVaultExists) {
-		return fmt.Errorf("vault already exists at %s", path)
-	}
-	if err != nil {
-		return err
+	if err := svc.Init(cmd.Context(), mp); err != nil {
+		return vaultFailure(err, path)
 	}
 	if _, err := fmt.Fprintf(d.Streams.Out, "Created vault at %s\n", path); err != nil {
 		return fmt.Errorf("write result: %w", err)
