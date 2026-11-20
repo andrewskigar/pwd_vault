@@ -37,10 +37,15 @@ type Store struct {
 	// rename replaces the vault with the finished temp file; tests swap it
 	// to inject a failure at the last step of a save.
 	rename func(oldpath, newpath string) error
+	// derive runs Argon2id; tests swap it to observe which header params
+	// reach the KDF, which a wall-clock budget could only infer.
+	derive func(mp app.MasterPassword, h header) []byte
 }
 
 // New returns a store for path that encrypts with p.
-func New(path string, p Params) *Store { return &Store{path: path, params: p, rename: os.Rename} }
+func New(path string, p Params) *Store {
+	return &Store{path: path, params: p, rename: os.Rename, derive: deriveKey}
+}
 
 // Create reserves the path with O_EXCL, so an existing vault is never
 // overwritten even by a concurrent init, then writes the vault atomically.
@@ -105,7 +110,7 @@ func (s *Store) Load(ctx context.Context, mp app.MasterPassword) (domain.Vault, 
 	if err != nil {
 		return domain.Vault{}, err
 	}
-	plain, ok := open(mp, raw)
+	plain, ok := s.open(mp, raw)
 	if !ok {
 		return domain.Vault{}, app.ErrUnlock
 	}
@@ -143,7 +148,7 @@ func readLimited(path string) ([]byte, error) {
 	return raw, nil
 }
 
-func open(mp app.MasterPassword, raw []byte) ([]byte, bool) {
+func (s *Store) open(mp app.MasterPassword, raw []byte) ([]byte, bool) {
 	if len(raw) < minFileSize || len(raw) > maxFileSize {
 		return nil, false
 	}
@@ -151,7 +156,7 @@ func open(mp app.MasterPassword, raw []byte) ([]byte, bool) {
 	if !ok {
 		return nil, false
 	}
-	key := deriveKey(mp, h)
+	key := s.derive(mp, h)
 	defer clear(key)
 	aead, err := chacha20poly1305.NewX(key)
 	if err != nil {
@@ -178,7 +183,7 @@ func (s *Store) seal(mp app.MasterPassword, p payload) ([]byte, error) {
 		return nil, fmt.Errorf("encode vault: %w", err)
 	}
 	defer clear(plain)
-	key := deriveKey(mp, h)
+	key := s.derive(mp, h)
 	defer clear(key)
 	aead, err := chacha20poly1305.NewX(key)
 	if err != nil {
