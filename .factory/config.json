@@ -5,7 +5,7 @@
   "default_mode": "interactive",
   "max_review_rounds": 3,
   "strictness": "greenfield",
-  "security_review": "auto",
+  "security_review": true,
   "ticket_verification": "full",
   "baseline": "check",
   "components": [
@@ -35,5 +35,5 @@
       ]
     }
   ],
-  "updated_at": "2026-11-20T14:47:52.678Z"
+  "updated_at": "2026-11-20T15:07:47.225Z"
 }
