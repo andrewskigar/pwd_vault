@@ -34,10 +34,13 @@ func DefaultParams() Params { return Params{Time: 3, MemoryKiB: 64 * 1024, Threa
 type Store struct {
 	path   string
 	params Params
+	// rename replaces the vault with the finished temp file; tests swap it
+	// to inject a failure at the last step of a save.
+	rename func(oldpath, newpath string) error
 }
 
 // New returns a store for path that encrypts with p.
-func New(path string, p Params) *Store { return &Store{path: path, params: p} }
+func New(path string, p Params) *Store { return &Store{path: path, params: p, rename: os.Rename} }
 
 // Create reserves the path with O_EXCL, so an existing vault is never
 // overwritten even by a concurrent init, then writes the vault atomically.
@@ -118,12 +121,21 @@ func (s *Store) Load(ctx context.Context, mp app.MasterPassword) (domain.Vault, 
 	return v, nil
 }
 
+// readLimited checks the size before reading, so an oversize file is
+// rejected without being loaded into memory.
 func readLimited(path string) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("stat vault: %w", err)
+	}
+	if info.Size() > maxFileSize {
+		return nil, app.ErrUnlock
+	}
 	raw, err := io.ReadAll(io.LimitReader(f, maxFileSize+1))
 	if err != nil {
 		return nil, fmt.Errorf("read vault: %w", err)
@@ -205,7 +217,7 @@ func (s *Store) writeAtomic(ctx context.Context, data []byte) (err error) {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp.Name(), s.path); err != nil {
+	if err := s.rename(tmp.Name(), s.path); err != nil {
 		return fmt.Errorf("replace vault: %w", err)
 	}
 	return nil
