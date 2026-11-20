@@ -1,0 +1,35 @@
+{
+  "version": 2,
+  "tracker": "local",
+  "base_branch": "main",
+  "default_mode": "interactive",
+  "max_review_rounds": 3,
+  "strictness": "greenfield",
+  "security_review": "auto",
+  "ticket_verification": "full",
+  "baseline": "check",
+  "components": [
+    {
+      "name": "root",
+      "path": ".",
+      "language": "generic",
+      "language_version": null,
+      "frameworks": [],
+      "project_type": "unknown",
+      "commands": {
+        "prepare": null,
+        "test": null,
+        "typecheck": null,
+        "lint": null
+      },
+      "scoped_commands": {
+        "test": null,
+        "typecheck": null,
+        "lint": null
+      },
+      "extensions": null,
+      "packs": []
+    }
+  ],
+  "updated_at": "2026-11-20T14:45:38.458Z"
+}

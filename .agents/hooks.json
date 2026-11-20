@@ -1,0 +1,16 @@
+{
+  "factory-guard": {
+    "PreToolUse": [
+      {
+        "matcher": "run_command|write_to_file|replace_file_content|multi_replace_file_content",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .agents/skills/factory/scripts/factory-guard.mjs --harness antigravity",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
