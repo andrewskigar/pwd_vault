@@ -55,6 +55,16 @@ func TestAddGenerateHintQuotesTheNameForShells(t *testing.T) {
 			args: []string{"add", "--generate", "--", "-dash"},
 		},
 		{name: "café", added: `"café"`, hint: `save_pwd get "café" --show`},
+		// PowerShell ends a double-quoted string at any of U+201C U+201D U+201E,
+		// so these names must be single-quoted.
+		{name: "a” ; calc ; “b", added: `"a” ; calc ; “b"`, hint: `save_pwd get 'a” ; calc ; “b' --show`},
+		{name: "„low", added: `"„low"`, hint: `save_pwd get '„low' --show`},
+		// PowerShell ends a single-quoted string at any of U+2018 U+2019 U+201A
+		// U+201B, but treats them as literal inside double quotes.
+		{name: "it’s", added: `"it’s"`, hint: `save_pwd get "it’s" --show`},
+		{name: "it’s $5", added: `"it’s $5"`, hint: `save_pwd get 'it'"’"'s $5' --show`},
+		{name: "‘a‚b‛%", added: `"‘a‚b‛%"`, hint: `save_pwd get ''"‘"'a'"‚"'b'"‛"'%' --show`},
+		{name: "“it’s”", added: `"“it’s”"`, hint: `save_pwd get '“it'"’"'s”' --show`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
