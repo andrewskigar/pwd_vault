@@ -10,26 +10,30 @@
   "baseline": "check",
   "components": [
     {
-      "name": "root",
+      "name": "go",
       "path": ".",
-      "language": "generic",
-      "language_version": null,
+      "language": "go",
+      "language_version": "1.25",
       "frameworks": [],
-      "project_type": "unknown",
+      "project_type": "library",
       "commands": {
         "prepare": null,
-        "test": null,
-        "typecheck": null,
-        "lint": null
+        "test": "go test ./...",
+        "typecheck": "go vet ./...",
+        "lint": "golangci-lint run"
       },
       "scoped_commands": {
         "test": null,
         "typecheck": null,
-        "lint": null
+        "lint": "golangci-lint run --new-from-rev={base_sha}"
       },
-      "extensions": null,
-      "packs": []
+      "extensions": [
+        ".go"
+      ],
+      "packs": [
+        "references/languages/go.md"
+      ]
     }
   ],
-  "updated_at": "2026-11-20T14:45:38.458Z"
+  "updated_at": "2026-11-20T14:47:52.678Z"
 }
