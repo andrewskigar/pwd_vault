@@ -49,7 +49,11 @@ func TestAddGenerateHintQuotesTheNameForShells(t *testing.T) {
 		{name: `say "hi"`, added: `"say \"hi\""`, hint: `save_pwd get 'say "hi"' --show`},
 		{name: "$HOME", added: `"$HOME"`, hint: `save_pwd get '$HOME' --show`},
 		{name: "100%", added: `"100%"`, hint: `save_pwd get '100%' --show`},
-		{name: "it's $5", added: `"it's $5"`, hint: `save_pwd get 'it'\''s $5' --show`},
+		{name: "it's $5", added: `"it's $5"`, hint: `save_pwd get 'it'"'"'s $5' --show`},
+		{
+			name: "x'; $(echo pwned); 'y", added: `"x'; $(echo pwned); 'y"`,
+			hint: `save_pwd get 'x'"'"'; $(echo pwned); '"'"'y' --show`,
+		},
 		{
 			name: "-dash", added: `"-dash"`, hint: `save_pwd get --show -- "-dash"`,
 			args: []string{"add", "--generate", "--", "-dash"},

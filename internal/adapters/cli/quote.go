@@ -7,13 +7,16 @@ import "strings"
 // are PowerShell's typographic double quotes.
 const singleQuoteTriggers = "\"$`\\!%^\u201c\u201d\u201e"
 
-// singleQuoteEscaper rewrites the characters that end a single-quoted string.
-// PowerShell also ends one at its typographic single quotes U+2018 U+2019
-// U+201A U+201B; each is closed out and double-quoted on its own, which POSIX
-// shells join back into one word and PowerShell splits into separate
-// arguments, so a pasted hint fails rather than runs anything.
+// singleQuoteEscaper rewrites the characters that end a single-quoted string:
+// ' and, in PowerShell, its typographic single quotes U+2018 U+2019 U+201A
+// U+201B. Each is closed out and double-quoted on its own, which POSIX shells
+// join back into one word and PowerShell splits into separate literal
+// arguments, so a pasted hint fails rather than runs anything. The POSIX
+// close, backslash-escaped quote, reopen escape is avoided because PowerShell
+// reads it as close, bare \, then an empty string, leaving the rest of the
+// name unquoted.
 var singleQuoteEscaper = strings.NewReplacer(
-	"'", `'\''`,
+	"'", `'"'"'`,
 	"\u2018", "'\"\u2018\"'",
 	"\u2019", "'\"\u2019\"'",
 	"\u201a", "'\"\u201a\"'",
@@ -26,16 +29,20 @@ var singleQuoteEscaper = strings.NewReplacer(
 //     with '-';
 //   - else double-quoted, unless name contains any of " $ ` \ ! % ^ or a
 //     typographic double quote (U+201C U+201D U+201E), in which case it is
-//     POSIX single-quoted, with each embedded ' replaced by the four bytes
-//     quote, backslash, quote, quote (close, escape, reopen) and each
-//     typographic single quote (U+2018 U+2019 U+201A U+201B) replaced by
-//     quote, double quote, the character, double quote, quote.
+//     single-quoted, with each embedded ' or typographic single quote
+//     (U+2018 U+2019 U+201A U+201B) replaced by quote, double quote, the
+//     character, double quote, quote (close, double-quote it, reopen).
 //
-// Typographic single quotes are literal inside double quotes in both shells.
+// ' and typographic single quotes are literal inside double quotes in both
+// shells.
 //
-// Unsupported: cmd.exe for names containing any of those trigger characters,
-// and PowerShell for names containing a trigger character together with ' or
-// a typographic single quote, since those escapes are POSIX-only.
+// Supported: POSIX shells for every name; PowerShell for every name except
+// the one below; cmd.exe for bare and double-quoted names.
+//
+// Unsupported, failing safely: PowerShell for a single-quoted name that
+// contains ' or a typographic single quote, which it splits into several
+// literal arguments, so get rejects the command. cmd.exe for single-quoted
+// names, which it does not treat as quoting.
 func shellQuote(name string) string {
 	switch {
 	case isBareWord(name):
