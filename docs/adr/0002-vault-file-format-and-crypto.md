@@ -36,5 +36,14 @@ Residual limits (accepted):
 
 Changing `domain.Password` to a byte type, mlock and swap protection are out of scope; `domain.Password` stays string-backed.
 
+## Shell hint quoting
+`add --generate` prints a "view it with" hint containing the entry name, which `domain.NewName` lets contain shell metacharacters. `shellQuote` (`internal/adapters/cli/quote.go`) prints the name bare if it is plain, double-quoted if it has only characters that are literal inside double quotes, and otherwise single-quoted. A leading `-` is guarded with `--`. Inside single quotes, ASCII `'` and the typographic single quotes (U+2018, U+2019, U+201A, U+201B) are written as `'"<char>"'`, not `'\''`: PowerShell parses `'\''` as a close quote plus a bare `\`, which was a real injection there. Typographic double quotes (U+201C, U+201D, U+201E) are quote characters in PowerShell, so they force single quoting.
+
+| Shell | Support |
+|---|---|
+| POSIX shells (sh, bash, zsh) | All names: the pasted hint is one literal argument |
+| PowerShell | All names except single-quoted ones containing `'` or a typographic single quote. PowerShell splits those into several literal arguments, nothing runs, and `get` (exactly one argument) rejects the command |
+| cmd.exe | Bare and double-quoted names only |
+
 ## Consequences
 Key-file unlock is not in v1 (header has an unlock-method field for it). Decrypted entry fields are strings that cannot be wiped; see "Secret handling" for what is wiped and the residual limits. Vaults written with more than 256 MiB of Argon2 memory no longer open; the CLI never wrote such params (default 64 MiB), and the format version stays 1.
