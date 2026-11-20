@@ -56,8 +56,8 @@ func (s *Store) Create(ctx context.Context, mp app.MasterPassword, v domain.Vaul
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
-		return fmt.Errorf("create vault directory: %w", err)
+	if err := s.makeDir(); err != nil {
+		return err
 	}
 	reserved, err := os.OpenFile(s.path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if errors.Is(err, fs.ErrExist) {
@@ -69,6 +69,9 @@ func (s *Store) Create(ctx context.Context, mp app.MasterPassword, v domain.Vaul
 	if err := reserved.Close(); err != nil {
 		return s.abandon(fmt.Errorf("create vault file: %w", err))
 	}
+	if err := restrictFile(s.path); err != nil {
+		return s.abandon(err)
+	}
 	data, err := s.seal(mp, toPayload(v))
 	if err != nil {
 		return s.abandon(err)
@@ -77,6 +80,22 @@ func (s *Store) Create(ctx context.Context, mp app.MasterPassword, v domain.Vaul
 		return s.abandon(err)
 	}
 	return nil
+}
+
+// makeDir creates the vault's directory if needed. Only a directory created
+// here is restricted to the owner: an existing one (e.g. Documents) belongs
+// to the user and keeps its permissions, and intermediate levels made by
+// MkdirAll keep their defaults.
+func (s *Store) makeDir() error {
+	dir := filepath.Dir(s.path)
+	_, statErr := os.Stat(dir)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create vault directory: %w", err)
+	}
+	if !errors.Is(statErr, fs.ErrNotExist) {
+		return nil
+	}
+	return restrictDir(dir)
 }
 
 // Save re-encrypts v with a fresh salt and nonce and atomically replaces the
@@ -219,6 +238,11 @@ func (s *Store) writeAtomic(ctx context.Context, data []byte) (err error) {
 			_ = os.Remove(tmp.Name())
 		}
 	}()
+	// The DACL or mode goes on before any byte is written, and rename keeps
+	// it, so the vault is never readable by others, not even briefly.
+	if err := restrictFile(tmp.Name()); err != nil {
+		return err
+	}
 	if _, err := tmp.Write(data); err != nil {
 		return fmt.Errorf("write vault: %w", err)
 	}
