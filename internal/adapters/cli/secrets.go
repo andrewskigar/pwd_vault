@@ -109,7 +109,8 @@ func (s *secretSource) master() (app.MasterPassword, error) {
 }
 
 // newEntryPassword reads an entry password: two matching prompts, or the next
-// stdin line. The raw bytes are wiped once copied into the domain value.
+// stdin line. The raw bytes are wiped right after the single conversion into
+// the domain value, before validation can return early.
 func (s *secretSource) newEntryPassword() (domain.Password, error) {
 	var (
 		b   []byte
@@ -123,8 +124,12 @@ func (s *secretSource) newEntryPassword() (domain.Password, error) {
 	if err != nil {
 		return domain.Password{}, err
 	}
-	defer clear(b)
-	return domain.NewPassword(string(b))
+	pw, err := domain.NewPassword(string(b))
+	clear(b)
+	if err != nil {
+		return domain.Password{}, err
+	}
+	return pw, nil
 }
 
 // answer reads a plain, non-secret reply from the next stdin line. Without

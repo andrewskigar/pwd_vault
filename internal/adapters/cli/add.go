@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -116,9 +117,18 @@ func runAdd(ctx context.Context, out io.Writer, sess *app.Session, path string, 
 // reportGenerated tells the user how to view a password they never saw; the
 // password itself is never printed.
 func reportGenerated(s Streams, name domain.Name, policy passgen.Policy) error {
-	if _, err := fmt.Fprintf(s.Out, "(generated password; view it with: %s get %s --show)\n", programName, name.String()); err != nil {
+	if _, err := fmt.Fprintf(s.Out, "(generated password; view it with: %s)\n", showCommand(name.String())); err != nil {
 		return fmt.Errorf("write result: %w", err)
 	}
 	warnIfWeak(s.Err, policy)
 	return nil
+}
+
+// showCommand is the get command that reveals name. A name starting with '-'
+// goes after "--" so get does not parse it as a flag.
+func showCommand(name string) string {
+	if strings.HasPrefix(name, "-") {
+		return programName + " get --show -- " + shellQuote(name)
+	}
+	return programName + " get " + shellQuote(name) + " --show"
 }

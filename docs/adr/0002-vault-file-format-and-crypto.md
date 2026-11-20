@@ -17,5 +17,24 @@ Status: accepted
 - Secrets never come from argv or env. `get` masks by default; `list` never prints passwords.
 - Password generation uses `crypto/rand` with unbiased sampling and Fisher-Yates shuffling.
 
+## Secret handling
+Secret bytes are wiped (zeroed in place) as soon as the code is done with them. Go cannot guarantee more than that, so the residual exposure is listed here.
+
+What is wiped, and where:
+- Master password: it stays `[]byte` from the prompt or stdin line (`secretSource.master`/`newMaster`) through `app.NewMasterPassword`, which takes the buffer without copying, to `argon2.IDKey(mp.Bytes(), ...)`. Every command wipes it with `defer mp.Wipe()`. It is never converted to a string.
+- Entry password typed by the user: `newEntryPassword` converts the bytes to `domain.Password` exactly once and clears the buffer on the next line, before validation can return. `promptConfirmed` clears the repeat buffer always and the first buffer on mismatch or error; `lineReader` clears a partial line on a read error.
+- Generated password: `passgen.Generate` builds it in a fixed-capacity byte buffer, converts it once and clears the buffer, and also clears it on every randomness error.
+- Vault storage: the derived key and the JSON plaintext are cleared after encrypting (`seal`) and after decrypting (`Load`).
+
+Residual limits (accepted):
+- `domain.Password` and every JSON-decoded entry field are immutable Go strings. They cannot be wiped and may linger in the heap, and from there in swap or crash dumps, until the GC reuses the memory. The GC may also copy them.
+- `encoding/json` makes intermediate copies while encoding and decoding that are not cleared.
+- `bufio.Reader`'s internal buffer still holds the stdin lines (`--password-stdin` secrets) it has read.
+- `math/big` values for the random indices exist during generation and are not cleared.
+- Library internals (Argon2 working memory, the AEAD's key schedule) are not under our control.
+- `get --show` prints the secret to stdout by design.
+
+Changing `domain.Password` to a byte type, mlock and swap protection are out of scope; `domain.Password` stays string-backed.
+
 ## Consequences
-Key-file unlock is not in v1 (header has an unlock-method field for it). Decrypted strings cannot be wiped (Go immutability). Vaults written with more than 256 MiB of Argon2 memory no longer open; the CLI never wrote such params (default 64 MiB), and the format version stays 1.
+Key-file unlock is not in v1 (header has an unlock-method field for it). Decrypted entry fields are strings that cannot be wiped; see "Secret handling" for what is wiped and the residual limits. Vaults written with more than 256 MiB of Argon2 memory no longer open; the CLI never wrote such params (default 64 MiB), and the format version stays 1.

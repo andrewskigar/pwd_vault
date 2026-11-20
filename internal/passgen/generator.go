@@ -31,13 +31,28 @@ func New(r io.Reader) *Generator {
 
 // Generate picks one character from each enabled class, fills the rest from
 // their union, then shuffles, so every enabled class is guaranteed to appear.
+// The byte buffer is wiped after the single conversion and on every error.
 func (g *Generator) Generate(p Policy) (domain.Password, error) {
+	out, err := g.draw(p)
+	if err != nil {
+		return domain.Password{}, err
+	}
+	pw, err := domain.NewPassword(string(out))
+	clear(out)
+	return pw, err
+}
+
+// draw fills and shuffles the password bytes; on error it wipes what it drew.
+func (g *Generator) draw(p Policy) ([]byte, error) {
 	sets := p.alphabets()
+	// Capacity is fixed up front so append never reallocates and leaves an
+	// unwiped copy behind.
 	out := make([]byte, 0, p.length)
 	for _, set := range sets {
 		c, err := g.pick(set)
 		if err != nil {
-			return domain.Password{}, err
+			clear(out)
+			return nil, err
 		}
 		out = append(out, c)
 	}
@@ -45,14 +60,16 @@ func (g *Generator) Generate(p Policy) (domain.Password, error) {
 	for len(out) < p.length {
 		c, err := g.pick(union)
 		if err != nil {
-			return domain.Password{}, err
+			clear(out)
+			return nil, err
 		}
 		out = append(out, c)
 	}
 	if err := g.shuffle(out); err != nil {
-		return domain.Password{}, err
+		clear(out)
+		return nil, err
 	}
-	return domain.NewPassword(string(out))
+	return out, nil
 }
 
 func (g *Generator) pick(set string) (byte, error) {
