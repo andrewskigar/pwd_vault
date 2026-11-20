@@ -31,12 +31,14 @@ type Streams struct {
 
 // Deps is the composition boundary: every field is a distinct, required port.
 type Deps struct {
-	Streams  Streams
-	Prompter Prompter
-	NewStore func(path string) app.VaultStore
-	Clock    app.Clock
-	Random   io.Reader
-	Version  string
+	Streams   Streams
+	Prompter  Prompter
+	LookupEnv func(key string) (string, bool)
+	ConfigDir func() (string, error)
+	NewStore  func(path string) app.VaultStore
+	Clock     app.Clock
+	Random    io.Reader
+	Version   string
 }
 
 // usageError marks a problem with how the command was invoked (exit 2).
@@ -102,7 +104,9 @@ func newRootCommand(d Deps) *cobra.Command {
 	secrets := &secretSource{opts: &opts, prompter: d.Prompter, lines: newLineReader(d.Streams.In)}
 
 	root.AddCommand(newGenerateCommand(d))
-	root.AddCommand(newInitCommand(d, &opts, secrets))
+	locator := vaultLocator{opts: &opts, lookupEnv: d.LookupEnv, configDir: d.ConfigDir}
+
+	root.AddCommand(newInitCommand(d, locator, secrets))
 	return root
 }
 

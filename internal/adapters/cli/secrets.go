@@ -35,13 +35,6 @@ type rootOptions struct {
 	passwordStdin bool
 }
 
-func (o *rootOptions) vault() (string, error) {
-	if o.vaultPath == "" {
-		return "", usageError{err: errors.New("no vault path given; use --vault PATH")}
-	}
-	return o.vaultPath, nil
-}
-
 // lineReader hands out stdin lines in order. One instance is shared by a whole
 // invocation, so later secrets read the lines after the master password.
 type lineReader struct {

@@ -62,6 +62,11 @@ func newVaultHarness(t *testing.T, secrets ...string) vaultHarness {
 	h.deps.Prompter = p
 	h.deps.NewStore = func(path string) app.VaultStore { return encfile.New(path, cheapParams) }
 	h.deps.Clock = func() time.Time { return time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC) }
+	// SAVE_PWD_VAULT is unset and the config dir is private to the test, so no
+	// test can touch the real user config dir.
+	h.deps.LookupEnv = mapEnv(map[string]string{})
+	configDir := t.TempDir()
+	h.deps.ConfigDir = func() (string, error) { return configDir, nil }
 	return vaultHarness{harness: h, prompter: p, dir: t.TempDir()}
 }
 
@@ -259,22 +264,6 @@ func TestInitWithoutTerminalSuggestsPasswordStdin(t *testing.T) {
 
 	assertFailure(t, h, code, "--password-stdin")
 	assertNoFile(t, path)
-}
-
-func TestInitWithoutVaultPathIsUsageError(t *testing.T) {
-	h := newVaultHarness(t)
-
-	code := h.run(t, "init")
-
-	if code != 2 {
-		t.Fatalf("exit = %d, want 2 (stderr %q)", code, h.stderr.String())
-	}
-	if !strings.Contains(h.stderr.String(), "--vault") {
-		t.Fatalf("stderr = %q, want it to mention --vault", h.stderr.String())
-	}
-	if len(h.prompter.prompts) != 0 {
-		t.Fatalf("prompter was called with %q before the path was known", h.prompter.prompts)
-	}
 }
 
 func TestInitWipesPromptedSecrets(t *testing.T) {

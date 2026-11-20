@@ -28,11 +28,13 @@ func run() int {
 	defer stop()
 
 	return cli.Execute(ctx, os.Args[1:], cli.Deps{
-		Streams:  cli.Streams{In: os.Stdin, Out: os.Stdout, Err: os.Stderr},
-		Prompter: cli.NewTerminalPrompter(os.Stdin, os.Stderr),
-		NewStore: func(path string) app.VaultStore { return encfile.New(path, encfile.DefaultParams()) },
-		Clock:    time.Now,
-		Random:   rand.Reader,
-		Version:  version,
+		Streams:   cli.Streams{In: os.Stdin, Out: os.Stdout, Err: os.Stderr},
+		Prompter:  cli.NewTerminalPrompter(os.Stdin, os.Stderr),
+		LookupEnv: os.LookupEnv,
+		ConfigDir: os.UserConfigDir,
+		NewStore:  func(path string) app.VaultStore { return encfile.New(path, encfile.DefaultParams()) },
+		Clock:     time.Now,
+		Random:    rand.Reader,
+		Version:   version,
 	})
 }

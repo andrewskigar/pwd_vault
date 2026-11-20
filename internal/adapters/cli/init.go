@@ -9,13 +9,13 @@ import (
 	"save_pwd/internal/app"
 )
 
-func newInitCommand(d Deps, opts *rootOptions, secrets *secretSource) *cobra.Command {
+func newInitCommand(d Deps, locator vaultLocator, secrets *secretSource) *cobra.Command {
 	return &cobra.Command{
 		Use:   "init",
 		Short: "Create a new encrypted vault",
 		Args:  cobra.NoArgs,
 		RunE: action(func(cmd *cobra.Command, _ []string) error {
-			path, err := opts.vault()
+			path, err := locator.resolve()
 			if err != nil {
 				return err
 			}
