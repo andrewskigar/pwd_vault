@@ -10,4 +10,4 @@ save_pwd is a command-line password vault. Terms used in code and docs:
 - **Core**: `internal/domain`, `internal/app`, `internal/passgen`. Imports only the standard library (no `os`, `net`, `math/rand`, `unsafe`) and other core packages.
 - **Adapters**: `internal/adapters/cli` (cobra, driving) and `internal/adapters/encfile` (encrypted file, driven, implements `app.VaultStore`). `cmd/save_pwd/main.go` is the composition root.
 
-Architecture and format decisions: see `docs/adr/`.
+Architecture, format and toolchain decisions: see `docs/adr/` (security checks: `docs/adr/0003-toolchain-and-security-checks.md`).

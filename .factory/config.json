@@ -13,7 +13,7 @@
       "name": "go",
       "path": ".",
       "language": "go",
-      "language_version": "1.25",
+      "language_version": "1.27",
       "frameworks": [],
       "project_type": "library",
       "commands": {

@@ -1,9 +1,7 @@
+version: "2"
 linters:
-  enable:
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - gofmt
+  enable: [errcheck, govet, ineffassign, staticcheck, unused]
+  exclusions:
+    presets: [std-error-handling]
+formatters:
+  enable: [gofmt]
