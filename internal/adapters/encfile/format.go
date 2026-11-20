@@ -36,10 +36,11 @@ const (
 )
 
 // Bounds on header params accepted for decryption, so a forged header cannot
-// make Load burn unbounded CPU or memory.
+// make Load burn unbounded CPU or memory. The memory cap is 256 MiB, four
+// times the 64 MiB default, which leaves room to raise DefaultParams later.
 const (
 	minTime, maxTime           = 1, 16
-	minMemoryKiB, maxMemoryKiB = 8, 1 << 20
+	minMemoryKiB, maxMemoryKiB = 8, 256 * 1024
 	minThreads, maxThreads     = 1, 16
 )
 

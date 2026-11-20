@@ -40,11 +40,14 @@ type Store struct {
 	// derive runs Argon2id; tests swap it to observe which header params
 	// reach the KDF, which a wall-clock budget could only infer.
 	derive func(mp app.MasterPassword, h header) []byte
+	// resolve follows symlinks in the vault path; tests swap it to stand in
+	// for a link where creating one needs privileges.
+	resolve func(path string) (string, error)
 }
 
 // New returns a store for path that encrypts with p.
 func New(path string, p Params) *Store {
-	return &Store{path: path, params: p, rename: os.Rename, derive: deriveKey}
+	return &Store{path: path, params: p, rename: os.Rename, derive: deriveKey, resolve: filepath.EvalSymlinks}
 }
 
 // Create reserves the path with O_EXCL, so an existing vault is never
@@ -198,9 +201,15 @@ func deriveKey(mp app.MasterPassword, h header) []byte {
 }
 
 // writeAtomic writes data to a temp file in the vault's directory and renames
-// it over the vault, so a failure never leaves a half-written vault.
+// it over the vault, so a failure never leaves a half-written vault. A
+// symlinked vault path is resolved once and the target is replaced, so the
+// link (e.g. into a synced folder) survives the save.
 func (s *Store) writeAtomic(ctx context.Context, data []byte) (err error) {
-	tmp, err := os.CreateTemp(filepath.Dir(s.path), ".vault-*.tmp")
+	target, err := s.target()
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(target), ".vault-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
 	}
@@ -222,8 +231,21 @@ func (s *Store) writeAtomic(ctx context.Context, data []byte) (err error) {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := s.rename(tmp.Name(), s.path); err != nil {
+	if err := s.rename(tmp.Name(), target); err != nil {
 		return fmt.Errorf("replace vault: %w", err)
 	}
 	return nil
+}
+
+// target is the file a save replaces: the vault path with symlinks followed,
+// or the path itself when nothing exists there yet.
+func (s *Store) target() (string, error) {
+	resolved, err := s.resolve(s.path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return s.path, nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("resolve vault path: %w", err)
+	}
+	return resolved, nil
 }

@@ -100,7 +100,7 @@ func TestOutOfBoundsHeaderIsRejectedWithoutRunningKDF(t *testing.T) {
 		{name: "time 0", mutate: setU32(offTime, 0)},
 		{name: "time 17", mutate: setU32(offTime, 17)},
 		{name: "memory 7 KiB", mutate: setU32(offMemory, 7)},
-		{name: "memory 1048577 KiB", mutate: setU32(offMemory, 1048577)},
+		{name: "memory 262145 KiB", mutate: setU32(offMemory, maxMemoryKiB+1)},
 		{name: "threads 0", mutate: setByte(offThreads, 0)},
 		{name: "threads 17", mutate: setByte(offThreads, 17)},
 		{name: "unknown version", mutate: func(b []byte) { binary.BigEndian.PutUint16(b[offVersion:], 2) }},
