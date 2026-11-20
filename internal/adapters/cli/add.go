@@ -7,24 +7,30 @@ import (
 
 	"save_pwd/internal/app"
 	"save_pwd/internal/domain"
+	"save_pwd/internal/passgen"
 )
 
 type addOptions struct {
-	kind     string
-	username string
-	url      string
-	notes    string
-	expires  string
+	kind       string
+	username   string
+	url        string
+	notes      string
+	expires    string
+	generation optionalGeneration
 }
 
 func newAddCommand(d Deps, locator vaultLocator, secrets *secretSource) *cobra.Command {
 	var opts addOptions
 	cmd := &cobra.Command{
 		Use:   "add <name>",
-		Short: "Add an entry; its password is prompted, never taken from flags",
+		Short: "Add an entry; its password is prompted or generated, never taken from flags",
 		Args:  cobra.ExactArgs(1),
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			draft, err := opts.draft(args[0])
+			if err != nil {
+				return usageError{err: err}
+			}
+			policy, generating, err := opts.generation.policy(cmd.Flags())
 			if err != nil {
 				return usageError{err: err}
 			}
@@ -37,10 +43,21 @@ func newAddCommand(d Deps, locator vaultLocator, secrets *secretSource) *cobra.C
 				return err
 			}
 			defer mp.Wipe()
-			if draft.Password, err = secrets.newEntryPassword(); err != nil {
+			if generating {
+				draft.Password, err = passgen.New(d.Random).Generate(policy)
+			} else {
+				draft.Password, err = secrets.newEntryPassword()
+			}
+			if err != nil {
 				return err
 			}
-			return runAdd(cmd, d, path, mp, draft)
+			if err := runAdd(cmd, d, path, mp, draft); err != nil {
+				return err
+			}
+			if generating {
+				return reportGenerated(d.Streams, draft.Name, policy)
+			}
+			return nil
 		}),
 	}
 	cmd.Flags().StringVar(&opts.kind, "kind", string(domain.KindSite), "entry kind: site, card, note or other")
@@ -48,6 +65,7 @@ func newAddCommand(d Deps, locator vaultLocator, secrets *secretSource) *cobra.C
 	cmd.Flags().StringVar(&opts.url, "url", "", "address of the resource")
 	cmd.Flags().StringVar(&opts.notes, "notes", "", "free-form notes")
 	cmd.Flags().StringVar(&opts.expires, "expires", "", "expiry date, YYYY-MM-DD")
+	opts.generation.register(cmd.Flags())
 	return cmd
 }
 
@@ -85,5 +103,15 @@ func runAdd(cmd *cobra.Command, d Deps, path string, mp app.MasterPassword, draf
 	if _, err := fmt.Fprintf(d.Streams.Out, "Added %q\n", e.Name().String()); err != nil {
 		return fmt.Errorf("write result: %w", err)
 	}
+	return nil
+}
+
+// reportGenerated tells the user how to view a password they never saw; the
+// password itself is never printed.
+func reportGenerated(s Streams, name domain.Name, policy passgen.Policy) error {
+	if _, err := fmt.Fprintf(s.Out, "(generated password; view it with: %s get %s --show)\n", programName, name.String()); err != nil {
+		return fmt.Errorf("write result: %w", err)
+	}
+	warnIfWeak(s.Err, policy)
 	return nil
 }
