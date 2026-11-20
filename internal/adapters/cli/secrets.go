@@ -52,16 +52,25 @@ func newLineReader(in io.Reader) *lineReader {
 // next returns the next line without its line ending; an empty or missing
 // line is an error because it can never be a valid secret.
 func (l *lineReader) next() ([]byte, error) {
+	line, err := l.line()
+	if err != nil {
+		return nil, err
+	}
+	if len(line) == 0 {
+		return nil, errNoStdinPassword
+	}
+	return line, nil
+}
+
+// line returns the next line without its line ending; a missing line at EOF
+// is empty, not an error.
+func (l *lineReader) line() ([]byte, error) {
 	line, err := l.r.ReadBytes('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		clear(line)
 		return nil, fmt.Errorf("read stdin: %w", err)
 	}
-	trimmed := bytes.TrimSuffix(bytes.TrimSuffix(line, []byte("\n")), []byte("\r"))
-	if len(trimmed) == 0 {
-		return nil, errNoStdinPassword
-	}
-	return trimmed, nil
+	return bytes.TrimSuffix(bytes.TrimSuffix(line, []byte("\n")), []byte("\r")), nil
 }
 
 // secretSource reads secrets from stdin lines or the prompter, as chosen by
@@ -116,6 +125,18 @@ func (s *secretSource) newEntryPassword() (domain.Password, error) {
 	}
 	defer clear(b)
 	return domain.NewPassword(string(b))
+}
+
+// answer reads a plain, non-secret reply from the next stdin line. Without
+// --password-stdin the master password came from the prompter, so this is the
+// first line of stdin; with it, the line after the master password. A missing
+// line (EOF) is an empty answer.
+func (s *secretSource) answer() (string, error) {
+	line, err := s.lines.line()
+	if err != nil {
+		return "", err
+	}
+	return string(line), nil
 }
 
 // read returns one secret from the next stdin line or a single prompt.

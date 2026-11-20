@@ -198,3 +198,33 @@ func TestVaultEntriesAreSortedByKey(t *testing.T) {
 		t.Fatalf("Entries() names = %v, want alpha,bank,Zeta", got)
 	}
 }
+
+func TestVaultRemoveIsCaseInsensitive(t *testing.T) {
+	v := domain.NewVault()
+	for _, s := range []string{"github", "gitlab"} {
+		f := validFields(t)
+		f.Name, _ = domain.NewName(s)
+		e, err := domain.NewEntry(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := v.Add(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	upper, _ := domain.NewName("GITHUB")
+
+	if err := v.Remove(upper); err != nil {
+		t.Fatalf("Remove(GITHUB): %v", err)
+	}
+
+	if _, err := v.Get(upper); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("Get(GITHUB) after Remove error = %v, want ErrNotFound", err)
+	}
+	if v.Len() != 1 || v.Entries()[0].Name().String() != "gitlab" {
+		t.Fatalf("entries after Remove = %d, want only gitlab", v.Len())
+	}
+	if err := v.Remove(upper); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("second Remove(GITHUB) error = %v, want ErrNotFound", err)
+	}
+}

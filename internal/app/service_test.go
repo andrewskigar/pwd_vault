@@ -277,3 +277,36 @@ func TestEntryChangesIsEmpty(t *testing.T) {
 		t.Error("EntryChanges clearing the URL reports empty")
 	}
 }
+
+func TestDeleteRemovesEntryAndSavesOnce(t *testing.T) {
+	svc, _, store := seededForUpdate(t)
+	mp := app.NewMasterPassword([]byte("master"))
+
+	if err := svc.Delete(t.Context(), mp, mustName(t, "GITHUB")); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	if _, err := svc.Get(t.Context(), mp, mustName(t, "github")); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("Get after Delete error = %v, want domain.ErrNotFound", err)
+	}
+	if store.saves != 1 {
+		t.Fatalf("saves = %d, want exactly 1", store.saves)
+	}
+}
+
+func TestDeleteMissingEntryNeverSaves(t *testing.T) {
+	svc, _, store := seededForUpdate(t)
+	mp := app.NewMasterPassword([]byte("master"))
+
+	err := svc.Delete(t.Context(), mp, mustName(t, "nope"))
+
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("error = %v, want domain.ErrNotFound", err)
+	}
+	if store.saves != 0 {
+		t.Fatalf("saves = %d, want 0", store.saves)
+	}
+	if _, err := svc.Get(t.Context(), mp, mustName(t, "github")); err != nil {
+		t.Fatalf("Get github after failed Delete: %v", err)
+	}
+}

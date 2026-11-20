@@ -191,6 +191,22 @@ func (s *Service) Update(ctx context.Context, mp MasterPassword, n domain.Name, 
 	return e, nil
 }
 
+// Delete removes the entry named n, ignoring case, and saves; a missing entry
+// is domain.ErrNotFound and nothing is saved.
+func (s *Service) Delete(ctx context.Context, mp MasterPassword, n domain.Name) error {
+	v, err := s.load(ctx, mp)
+	if err != nil {
+		return err
+	}
+	if err := v.Remove(n); err != nil {
+		return fmt.Errorf("remove entry: %w", err)
+	}
+	if err := s.store.Save(ctx, mp, v); err != nil {
+		return fmt.Errorf("save vault: %w", err)
+	}
+	return nil
+}
+
 func (f ListFilter) matches(e domain.Entry) bool {
 	return f.Kind == "" || e.Kind() == f.Kind
 }

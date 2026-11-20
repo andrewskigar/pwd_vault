@@ -56,3 +56,13 @@ func (v Vault) Entries() []Entry {
 
 // Len is the number of entries in the vault.
 func (v Vault) Len() int { return len(v.entries) }
+
+// Remove deletes the entry named n, ignoring case, or returns ErrNotFound.
+func (v *Vault) Remove(n Name) error {
+	key := n.Key()
+	if _, ok := v.entries[key]; !ok {
+		return ErrNotFound
+	}
+	delete(v.entries, key)
+	return nil
+}
