@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -74,6 +76,16 @@ func newUpdateCommand(d Deps, locator vaultLocator, secrets *secretSource) *cobr
 				return err
 			}
 			defer mp.Wipe()
+			// Unlock and find the entry before asking for or generating the new
+			// password, so a wrong master password, a missing vault or a missing
+			// entry fails before the user types more.
+			sess, err := app.NewService(d.NewStore(path), d.Clock).Open(cmd.Context(), mp)
+			if err != nil {
+				return entryFailure(err, path, name)
+			}
+			if _, err := sess.Find(name); err != nil {
+				return entryFailure(err, path, name)
+			}
 			pw, err := newPassword(d, secrets, source, policy)
 			if err != nil {
 				return err
@@ -81,7 +93,7 @@ func newUpdateCommand(d Deps, locator vaultLocator, secrets *secretSource) *cobr
 			if source != keepPassword {
 				changes.Password = &pw
 			}
-			stored, err := runUpdate(cmd, d, path, mp, name, changes)
+			stored, err := runUpdate(cmd.Context(), d.Streams.Out, sess, path, name, changes)
 			if err != nil {
 				return err
 			}
@@ -161,13 +173,12 @@ func newPassword(d Deps, secrets *secretSource, source passwordSource, policy pa
 	return domain.Password{}, errors.New("unknown password source")
 }
 
-func runUpdate(cmd *cobra.Command, d Deps, path string, mp app.MasterPassword, name domain.Name, changes app.EntryChanges) (domain.Name, error) {
-	svc := app.NewService(d.NewStore(path), d.Clock)
-	e, err := svc.Update(cmd.Context(), mp, name, changes)
+func runUpdate(ctx context.Context, out io.Writer, sess *app.Session, path string, name domain.Name, changes app.EntryChanges) (domain.Name, error) {
+	e, err := sess.Update(ctx, name, changes)
 	if err != nil {
 		return domain.Name{}, entryFailure(err, path, name)
 	}
-	if _, err := fmt.Fprintf(d.Streams.Out, "Updated %q\n", e.Name().String()); err != nil {
+	if _, err := fmt.Fprintf(out, "Updated %q\n", e.Name().String()); err != nil {
 		return domain.Name{}, fmt.Errorf("write result: %w", err)
 	}
 	return e.Name(), nil

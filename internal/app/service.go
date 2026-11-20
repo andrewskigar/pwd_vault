@@ -141,34 +141,16 @@ func (s *Service) List(ctx context.Context, mp MasterPassword, f ListFilter) ([]
 	return matches, nil
 }
 
-// Update applies c to the entry named n, ignoring case. It keeps the creation
-// time and stored display name, stamps the update time, and saves only when the
+// Update applies c to the entry named n, ignoring case, and saves only when the
 // changed entry is valid: ErrNoChanges, domain.ErrNotFound, domain.ErrInvalid.
+// It is Open followed by Session.Update, so the vault is loaded before the
+// changes are checked.
 func (s *Service) Update(ctx context.Context, mp MasterPassword, n domain.Name, c EntryChanges) (domain.Entry, error) {
-	if c.IsEmpty() {
-		return domain.Entry{}, ErrNoChanges
-	}
-	v, err := s.load(ctx, mp)
+	sess, err := s.Open(ctx, mp)
 	if err != nil {
 		return domain.Entry{}, err
 	}
-	current, err := v.Get(n)
-	if err != nil {
-		return domain.Entry{}, fmt.Errorf("get entry: %w", err)
-	}
-	f := c.applyTo(current.Fields())
-	f.UpdatedAt = s.now.timestamp()
-	e, err := domain.NewEntry(f)
-	if err != nil {
-		return domain.Entry{}, fmt.Errorf("update entry: %w", err)
-	}
-	if err := v.Replace(e); err != nil {
-		return domain.Entry{}, fmt.Errorf("replace entry: %w", err)
-	}
-	if err := s.store.Save(ctx, mp, v); err != nil {
-		return domain.Entry{}, fmt.Errorf("save vault: %w", err)
-	}
-	return e, nil
+	return sess.Update(ctx, n, c)
 }
 
 // Delete removes the entry named n, ignoring case, and saves; a missing entry

@@ -66,6 +66,32 @@ func (s *Session) Add(ctx context.Context, d EntryDraft) (domain.Entry, error) {
 	return e, nil
 }
 
+// Update applies c to the entry named n, ignoring case, and saves once. It
+// keeps the creation time and stored display name and stamps the update time.
+// ErrNoChanges, domain.ErrNotFound and domain.ErrInvalid return without saving.
+func (s *Session) Update(ctx context.Context, n domain.Name, c EntryChanges) (domain.Entry, error) {
+	if c.IsEmpty() {
+		return domain.Entry{}, ErrNoChanges
+	}
+	current, err := s.Find(n)
+	if err != nil {
+		return domain.Entry{}, err
+	}
+	f := c.applyTo(current.Fields())
+	f.UpdatedAt = s.now.timestamp()
+	e, err := domain.NewEntry(f)
+	if err != nil {
+		return domain.Entry{}, fmt.Errorf("update entry: %w", err)
+	}
+	if err := s.vault.Replace(e); err != nil {
+		return domain.Entry{}, fmt.Errorf("replace entry: %w", err)
+	}
+	if err := s.save(ctx); err != nil {
+		return domain.Entry{}, err
+	}
+	return e, nil
+}
+
 // Delete removes the entry named n, ignoring case, and saves once; a missing
 // entry is domain.ErrNotFound and nothing is saved.
 func (s *Session) Delete(ctx context.Context, n domain.Name) error {
