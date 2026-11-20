@@ -7,8 +7,11 @@ import (
 	"crypto/rand"
 	"os"
 	"os/signal"
+	"time"
 
 	"save_pwd/internal/adapters/cli"
+	"save_pwd/internal/adapters/encfile"
+	"save_pwd/internal/app"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -25,8 +28,11 @@ func run() int {
 	defer stop()
 
 	return cli.Execute(ctx, os.Args[1:], cli.Deps{
-		Streams: cli.Streams{In: os.Stdin, Out: os.Stdout, Err: os.Stderr},
-		Random:  rand.Reader,
-		Version: version,
+		Streams:  cli.Streams{In: os.Stdin, Out: os.Stdout, Err: os.Stderr},
+		Prompter: cli.NewTerminalPrompter(os.Stdin, os.Stderr),
+		NewStore: func(path string) app.VaultStore { return encfile.New(path, encfile.DefaultParams()) },
+		Clock:    time.Now,
+		Random:   rand.Reader,
+		Version:  version,
 	})
 }

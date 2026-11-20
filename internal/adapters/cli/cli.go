@@ -9,6 +9,8 @@ import (
 	"io"
 
 	"github.com/spf13/cobra"
+
+	"save_pwd/internal/app"
 )
 
 const (
@@ -29,9 +31,12 @@ type Streams struct {
 
 // Deps is the composition boundary: every field is a distinct, required port.
 type Deps struct {
-	Streams Streams
-	Random  io.Reader
-	Version string
+	Streams  Streams
+	Prompter Prompter
+	NewStore func(path string) app.VaultStore
+	Clock    app.Clock
+	Random   io.Reader
+	Version  string
 }
 
 // usageError marks a problem with how the command was invoked (exit 2).
@@ -89,7 +94,15 @@ func newRootCommand(d Deps) *cobra.Command {
 		SilenceErrors: true,
 	}
 	root.CompletionOptions.DisableDefaultCmd = true
+
+	var opts rootOptions
+	root.PersistentFlags().StringVar(&opts.vaultPath, "vault", "", "path of the vault file")
+	root.PersistentFlags().BoolVar(&opts.passwordStdin, "password-stdin", false,
+		"read the master password from the first line of stdin instead of prompting")
+	secrets := &secretSource{opts: &opts, prompter: d.Prompter, lines: newLineReader(d.Streams.In)}
+
 	root.AddCommand(newGenerateCommand(d))
+	root.AddCommand(newInitCommand(d, &opts, secrets))
 	return root
 }
 
