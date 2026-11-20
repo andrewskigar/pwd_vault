@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"context"
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
@@ -43,6 +45,12 @@ func newAddCommand(d Deps, locator vaultLocator, secrets *secretSource) *cobra.C
 				return err
 			}
 			defer mp.Wipe()
+			// Unlock before asking for the entry password, so a wrong master
+			// password or a missing vault fails before the user types more.
+			sess, err := app.NewService(d.NewStore(path), d.Clock).Open(cmd.Context(), mp)
+			if err != nil {
+				return entryFailure(err, path, draft.Name)
+			}
 			if generating {
 				draft.Password, err = passgen.New(d.Random).Generate(policy)
 			} else {
@@ -51,7 +59,7 @@ func newAddCommand(d Deps, locator vaultLocator, secrets *secretSource) *cobra.C
 			if err != nil {
 				return err
 			}
-			if err := runAdd(cmd, d, path, mp, draft); err != nil {
+			if err := runAdd(cmd.Context(), d.Streams.Out, sess, path, draft); err != nil {
 				return err
 			}
 			if generating {
@@ -94,13 +102,12 @@ func (o addOptions) draft(rawName string) (app.EntryDraft, error) {
 	}, nil
 }
 
-func runAdd(cmd *cobra.Command, d Deps, path string, mp app.MasterPassword, draft app.EntryDraft) error {
-	svc := app.NewService(d.NewStore(path), d.Clock)
-	e, err := svc.Add(cmd.Context(), mp, draft)
+func runAdd(ctx context.Context, out io.Writer, sess *app.Session, path string, draft app.EntryDraft) error {
+	e, err := sess.Add(ctx, draft)
 	if err != nil {
 		return entryFailure(err, path, draft.Name)
 	}
-	if _, err := fmt.Fprintf(d.Streams.Out, "Added %q\n", e.Name().String()); err != nil {
+	if _, err := fmt.Fprintf(out, "Added %q\n", e.Name().String()); err != nil {
 		return fmt.Errorf("write result: %w", err)
 	}
 	return nil

@@ -102,34 +102,14 @@ func (s *Service) Init(ctx context.Context, mp MasterPassword) error {
 }
 
 // Add stores a new entry created now, or returns domain.ErrDuplicate when the
-// name is taken (ignoring case).
+// name is taken (ignoring case). It is Open followed by Session.Add, so the
+// vault is loaded before the draft is validated.
 func (s *Service) Add(ctx context.Context, mp MasterPassword, d EntryDraft) (domain.Entry, error) {
-	now := s.timestamp()
-	e, err := domain.NewEntry(domain.EntryFields{
-		Name:      d.Name,
-		Kind:      d.Kind,
-		Username:  d.Username,
-		Password:  d.Password,
-		URL:       d.URL,
-		Notes:     d.Notes,
-		CreatedAt: now,
-		UpdatedAt: now,
-		ExpiresOn: d.ExpiresOn,
-	})
-	if err != nil {
-		return domain.Entry{}, fmt.Errorf("new entry: %w", err)
-	}
-	v, err := s.load(ctx, mp)
+	sess, err := s.Open(ctx, mp)
 	if err != nil {
 		return domain.Entry{}, err
 	}
-	if err := v.Add(e); err != nil {
-		return domain.Entry{}, fmt.Errorf("add entry: %w", err)
-	}
-	if err := s.store.Save(ctx, mp, v); err != nil {
-		return domain.Entry{}, fmt.Errorf("save vault: %w", err)
-	}
-	return e, nil
+	return sess.Add(ctx, d)
 }
 
 // Get returns the entry named n, ignoring case, or domain.ErrNotFound.
@@ -177,7 +157,7 @@ func (s *Service) Update(ctx context.Context, mp MasterPassword, n domain.Name, 
 		return domain.Entry{}, fmt.Errorf("get entry: %w", err)
 	}
 	f := c.applyTo(current.Fields())
-	f.UpdatedAt = s.timestamp()
+	f.UpdatedAt = s.now.timestamp()
 	e, err := domain.NewEntry(f)
 	if err != nil {
 		return domain.Entry{}, fmt.Errorf("update entry: %w", err)
@@ -194,17 +174,11 @@ func (s *Service) Update(ctx context.Context, mp MasterPassword, n domain.Name, 
 // Delete removes the entry named n, ignoring case, and saves; a missing entry
 // is domain.ErrNotFound and nothing is saved.
 func (s *Service) Delete(ctx context.Context, mp MasterPassword, n domain.Name) error {
-	v, err := s.load(ctx, mp)
+	sess, err := s.Open(ctx, mp)
 	if err != nil {
 		return err
 	}
-	if err := v.Remove(n); err != nil {
-		return fmt.Errorf("remove entry: %w", err)
-	}
-	if err := s.store.Save(ctx, mp, v); err != nil {
-		return fmt.Errorf("save vault: %w", err)
-	}
-	return nil
+	return sess.Delete(ctx, n)
 }
 
 func (f ListFilter) matches(e domain.Entry) bool {
@@ -221,6 +195,6 @@ func (s *Service) load(ctx context.Context, mp MasterPassword) (domain.Vault, er
 
 // timestamp is the stored form of "now": UTC in whole seconds, so stored and
 // printed times agree.
-func (s *Service) timestamp() time.Time {
-	return s.now().UTC().Truncate(time.Second)
+func (c Clock) timestamp() time.Time {
+	return c().UTC().Truncate(time.Second)
 }

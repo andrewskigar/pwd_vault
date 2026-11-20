@@ -11,10 +11,14 @@ import (
 	"save_pwd/internal/domain"
 )
 
-// memStore is an in-memory app.VaultStore that counts saves.
+// memStore is an in-memory app.VaultStore that counts loads and saves. Load
+// fails with loadErr when it is set. Load hands out the stored vault itself,
+// so its entry map is shared with the caller.
 type memStore struct {
-	vault domain.Vault
-	saves int
+	vault   domain.Vault
+	loads   int
+	saves   int
+	loadErr error
 }
 
 func (s *memStore) Create(_ context.Context, _ app.MasterPassword, v domain.Vault) error {
@@ -23,6 +27,10 @@ func (s *memStore) Create(_ context.Context, _ app.MasterPassword, v domain.Vaul
 }
 
 func (s *memStore) Load(context.Context, app.MasterPassword) (domain.Vault, error) {
+	s.loads++
+	if s.loadErr != nil {
+		return domain.Vault{}, s.loadErr
+	}
 	return s.vault, nil
 }
 
@@ -145,7 +153,7 @@ func withKind(d app.EntryDraft, k domain.Kind) app.EntryDraft {
 
 // seededForUpdate returns a service whose vault holds one fully populated
 // "GitHub" entry created at 10:00 UTC, the clock it reads (so tests can move
-// it on), and the store with its save counter reset.
+// it on), and the store with its load and save counters reset.
 func seededForUpdate(t *testing.T) (*app.Service, *time.Time, *memStore) {
 	t.Helper()
 	store := &memStore{vault: domain.NewVault()}
@@ -163,7 +171,7 @@ func seededForUpdate(t *testing.T) (*app.Service, *time.Time, *memStore) {
 	if _, err := svc.Add(t.Context(), app.NewMasterPassword([]byte("master")), d); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	store.saves = 0
+	store.loads, store.saves = 0, 0
 	return svc, &now, store
 }
 

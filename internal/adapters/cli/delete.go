@@ -46,10 +46,14 @@ func newDeleteCommand(d Deps, locator vaultLocator, secrets *secretSource) *cobr
 }
 
 func runDelete(cmd *cobra.Command, d Deps, secrets *secretSource, path string, mp app.MasterPassword, name domain.Name, opts deleteOptions) error {
-	svc := app.NewService(d.NewStore(path), d.Clock)
 	// Unlocking and finding the entry first means a wrong password or a typo
-	// in the name fails before the user is asked to confirm anything.
-	e, err := svc.Get(cmd.Context(), mp, name)
+	// in the name fails before the user is asked to confirm anything. One
+	// session serves the whole command: one Load, and one Save if confirmed.
+	sess, err := app.NewService(d.NewStore(path), d.Clock).Open(cmd.Context(), mp)
+	if err != nil {
+		return entryFailure(err, path, name)
+	}
+	e, err := sess.Find(name)
 	if err != nil {
 		return entryFailure(err, path, name)
 	}
@@ -59,7 +63,7 @@ func runDelete(cmd *cobra.Command, d Deps, secrets *secretSource, path string, m
 			return err
 		}
 	}
-	if err := svc.Delete(cmd.Context(), mp, name); err != nil {
+	if err := sess.Delete(cmd.Context(), name); err != nil {
 		return entryFailure(err, path, name)
 	}
 	if _, err := fmt.Fprintf(d.Streams.Out, "Deleted %q\n", stored); err != nil {
