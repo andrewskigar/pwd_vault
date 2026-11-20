@@ -35,6 +35,11 @@ type EntryDraft struct {
 	ExpiresOn domain.Date
 }
 
+// ListFilter selects the entries List returns; the zero Kind means all kinds.
+type ListFilter struct {
+	Kind domain.Kind
+}
+
 // Service runs the vault use cases against one store.
 type Service struct {
 	store VaultStore
@@ -99,6 +104,26 @@ func (s *Service) Get(ctx context.Context, mp MasterPassword, n domain.Name) (do
 		return domain.Entry{}, fmt.Errorf("get entry: %w", err)
 	}
 	return e, nil
+}
+
+// List returns the entries matching f, sorted by name ignoring case. It only
+// reads the vault, so it never saves.
+func (s *Service) List(ctx context.Context, mp MasterPassword, f ListFilter) ([]domain.Entry, error) {
+	v, err := s.load(ctx, mp)
+	if err != nil {
+		return nil, err
+	}
+	var matches []domain.Entry
+	for _, e := range v.Entries() {
+		if f.matches(e) {
+			matches = append(matches, e)
+		}
+	}
+	return matches, nil
+}
+
+func (f ListFilter) matches(e domain.Entry) bool {
+	return f.Kind == "" || e.Kind() == f.Kind
 }
 
 func (s *Service) load(ctx context.Context, mp MasterPassword) (domain.Vault, error) {

@@ -149,6 +149,7 @@ func TestWrongMasterPasswordIsGenericUnlockError(t *testing.T) {
 	}{
 		{name: "get", secrets: []string{"wrong master pw"}, args: []string{"get", "github"}},
 		{name: "add", secrets: []string{"wrong master pw", entryPassword, entryPassword}, args: []string{"add", "gitlab"}},
+		{name: "list", secrets: []string{"wrong master pw"}, args: []string{"list"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -177,6 +178,7 @@ func TestEntryCommandsAgainstMissingVault(t *testing.T) {
 	}{
 		{name: "get", secrets: []string{masterPassword}, args: []string{"get", "github"}},
 		{name: "add", secrets: []string{masterPassword, entryPassword, entryPassword}, args: []string{"add", "github"}},
+		{name: "list", secrets: []string{masterPassword}, args: []string{"list"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -206,6 +208,8 @@ func TestInvalidEntryArgumentsAreUsageErrorsBeforeAnyPrompt(t *testing.T) {
 		{name: "add without name", args: []string{"add"}},
 		{name: "get empty name", args: []string{"get", ""}},
 		{name: "get name with control character", args: []string{"get", "git\nhub"}},
+		{name: "list unknown kind", args: []string{"list", "--kind", "bogus"}},
+		{name: "list extra argument", args: []string{"list", "extra-arg"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
