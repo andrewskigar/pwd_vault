@@ -10,4 +10,5 @@ var (
 	// so the error is no oracle for an attacker.
 	ErrUnlock     = errors.New("cannot unlock vault: wrong master password or corrupted file")
 	ErrWeakMaster = errors.New("master password must be at least 8 characters")
+	ErrNoChanges  = errors.New("no changes requested")
 )

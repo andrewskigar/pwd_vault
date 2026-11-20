@@ -142,3 +142,138 @@ func withKind(d app.EntryDraft, k domain.Kind) app.EntryDraft {
 	d.Kind = k
 	return d
 }
+
+// seededForUpdate returns a service whose vault holds one fully populated
+// "GitHub" entry created at 10:00 UTC, the clock it reads (so tests can move
+// it on), and the store with its save counter reset.
+func seededForUpdate(t *testing.T) (*app.Service, *time.Time, *memStore) {
+	t.Helper()
+	store := &memStore{vault: domain.NewVault()}
+	now := time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC)
+	svc := app.NewService(store, func() time.Time { return now })
+	d := draft(t, "GitHub")
+	d.Username = "alice"
+	d.URL = "https://github.com"
+	d.Notes = "2FA on"
+	expires, err := domain.ParseDate("2027-01-31")
+	if err != nil {
+		t.Fatalf("ParseDate: %v", err)
+	}
+	d.ExpiresOn = expires
+	if _, err := svc.Add(t.Context(), app.NewMasterPassword([]byte("master")), d); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	store.saves = 0
+	return svc, &now, store
+}
+
+func TestUpdateChangesOnlyGivenFieldsKeepsCreatedAndBumpsUpdated(t *testing.T) {
+	svc, now, store := seededForUpdate(t)
+	*now = time.Date(2026, 11, 21, 9, 30, 15, 500000000, time.FixedZone("UTC+2", 2*60*60))
+	bob, empty := "bob", ""
+	noExpiry := domain.Date{}
+
+	e, err := svc.Update(t.Context(), app.NewMasterPassword([]byte("master")), mustName(t, "github"),
+		app.EntryChanges{Username: &bob, Notes: &empty, ExpiresOn: &noExpiry})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	stored, err := svc.Get(t.Context(), app.NewMasterPassword([]byte("master")), mustName(t, "github"))
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	for label, got := range map[string]domain.Entry{"returned": e, "stored": stored} {
+		checks := []struct{ field, got, want string }{
+			{"name", got.Name().String(), "GitHub"},
+			{"kind", string(got.Kind()), "site"},
+			{"username", got.Username(), "bob"},
+			{"password", got.Password().Reveal(), "entry pw"},
+			{"url", got.URL(), "https://github.com"},
+			{"notes", got.Notes(), ""},
+			{"expires", got.ExpiresOn().String(), ""},
+			{"created", got.CreatedAt().Format(time.RFC3339), "2026-11-20T10:00:00Z"},
+			{"updated", got.UpdatedAt().Format(time.RFC3339), "2026-11-21T07:30:15Z"},
+		}
+		for _, c := range checks {
+			if c.got != c.want {
+				t.Errorf("%s %s = %q, want %q", label, c.field, c.got, c.want)
+			}
+		}
+	}
+	if store.saves != 1 {
+		t.Fatalf("saves = %d, want exactly 1", store.saves)
+	}
+}
+
+func TestUpdateReplacesPassword(t *testing.T) {
+	svc, _, store := seededForUpdate(t)
+	pw, err := domain.NewPassword("brand new pw")
+	if err != nil {
+		t.Fatalf("NewPassword: %v", err)
+	}
+
+	e, err := svc.Update(t.Context(), app.NewMasterPassword([]byte("master")), mustName(t, "GITHUB"),
+		app.EntryChanges{Password: &pw})
+
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if got := e.Password().Reveal(); got != "brand new pw" {
+		t.Fatalf("password = %q, want the new one", got)
+	}
+	if e.Username() != "alice" || e.Name().String() != "GitHub" {
+		t.Fatalf("entry = %q/%q, want the other fields unchanged", e.Name(), e.Username())
+	}
+	if store.saves != 1 {
+		t.Fatalf("saves = %d, want exactly 1", store.saves)
+	}
+}
+
+func TestFailedUpdatesNeverSave(t *testing.T) {
+	bob := "bob"
+	longURL := "https://example.com/" + strings.Repeat("a", 2048)
+	tests := []struct {
+		name    string
+		entry   string
+		changes app.EntryChanges
+		want    error
+	}{
+		{name: "no changes", entry: "github", changes: app.EntryChanges{}, want: app.ErrNoChanges},
+		{name: "entry not found", entry: "nope", changes: app.EntryChanges{Username: &bob}, want: domain.ErrNotFound},
+		{name: "URL over 2048 bytes", entry: "github", changes: app.EntryChanges{URL: &longURL}, want: domain.ErrInvalid},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, _, store := seededForUpdate(t)
+			mp := app.NewMasterPassword([]byte("master"))
+
+			_, err := svc.Update(t.Context(), mp, mustName(t, tt.entry), tt.changes)
+
+			if !errors.Is(err, tt.want) {
+				t.Fatalf("error = %v, want %v", err, tt.want)
+			}
+			if store.saves != 0 {
+				t.Fatalf("saves = %d, want 0", store.saves)
+			}
+			stored, err := svc.Get(t.Context(), mp, mustName(t, "github"))
+			if err != nil {
+				t.Fatalf("Get: %v", err)
+			}
+			if stored.URL() != "https://github.com" || stored.Username() != "alice" {
+				t.Fatalf("stored entry changed: url %q, username %q", stored.URL(), stored.Username())
+			}
+		})
+	}
+}
+
+func TestEntryChangesIsEmpty(t *testing.T) {
+	empty := ""
+	if !(app.EntryChanges{}).IsEmpty() {
+		t.Error("zero EntryChanges is not empty")
+	}
+	// A pointer to "" is a request to clear the field, so it is a change.
+	if (app.EntryChanges{URL: &empty}).IsEmpty() {
+		t.Error("EntryChanges clearing the URL reports empty")
+	}
+}

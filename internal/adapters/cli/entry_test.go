@@ -150,6 +150,7 @@ func TestWrongMasterPasswordIsGenericUnlockError(t *testing.T) {
 		{name: "get", secrets: []string{"wrong master pw"}, args: []string{"get", "github"}},
 		{name: "add", secrets: []string{"wrong master pw", entryPassword, entryPassword}, args: []string{"add", "gitlab"}},
 		{name: "list", secrets: []string{"wrong master pw"}, args: []string{"list"}},
+		{name: "update", secrets: []string{"wrong master pw"}, args: []string{"update", "github", "--username", "bob"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -179,6 +180,7 @@ func TestEntryCommandsAgainstMissingVault(t *testing.T) {
 		{name: "get", secrets: []string{masterPassword}, args: []string{"get", "github"}},
 		{name: "add", secrets: []string{masterPassword, entryPassword, entryPassword}, args: []string{"add", "github"}},
 		{name: "list", secrets: []string{masterPassword}, args: []string{"list"}},
+		{name: "update", secrets: []string{masterPassword}, args: []string{"update", "github", "--username", "bob"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -110,6 +110,7 @@ func newRootCommand(d Deps) *cobra.Command {
 	root.AddCommand(newAddCommand(d, locator, secrets))
 	root.AddCommand(newGetCommand(d, locator, secrets))
 	root.AddCommand(newListCommand(d, locator, secrets))
+	root.AddCommand(newUpdateCommand(d, locator, secrets))
 	return root
 }
 

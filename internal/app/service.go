@@ -35,6 +35,45 @@ type EntryDraft struct {
 	ExpiresOn domain.Date
 }
 
+// EntryChanges is the input for Update. A nil field leaves the entry's value
+// unchanged; a pointer to "" or to the zero Date clears it.
+type EntryChanges struct {
+	Kind      *domain.Kind
+	Username  *string
+	Password  *domain.Password
+	URL       *string
+	Notes     *string
+	ExpiresOn *domain.Date
+}
+
+// IsEmpty reports whether c requests no change at all.
+func (c EntryChanges) IsEmpty() bool {
+	return c == EntryChanges{}
+}
+
+// applyTo returns f with every requested change made.
+func (c EntryChanges) applyTo(f domain.EntryFields) domain.EntryFields {
+	if c.Kind != nil {
+		f.Kind = *c.Kind
+	}
+	if c.Username != nil {
+		f.Username = *c.Username
+	}
+	if c.Password != nil {
+		f.Password = *c.Password
+	}
+	if c.URL != nil {
+		f.URL = *c.URL
+	}
+	if c.Notes != nil {
+		f.Notes = *c.Notes
+	}
+	if c.ExpiresOn != nil {
+		f.ExpiresOn = *c.ExpiresOn
+	}
+	return f
+}
+
 // ListFilter selects the entries List returns; the zero Kind means all kinds.
 type ListFilter struct {
 	Kind domain.Kind
@@ -120,6 +159,36 @@ func (s *Service) List(ctx context.Context, mp MasterPassword, f ListFilter) ([]
 		}
 	}
 	return matches, nil
+}
+
+// Update applies c to the entry named n, ignoring case. It keeps the creation
+// time and stored display name, stamps the update time, and saves only when the
+// changed entry is valid: ErrNoChanges, domain.ErrNotFound, domain.ErrInvalid.
+func (s *Service) Update(ctx context.Context, mp MasterPassword, n domain.Name, c EntryChanges) (domain.Entry, error) {
+	if c.IsEmpty() {
+		return domain.Entry{}, ErrNoChanges
+	}
+	v, err := s.load(ctx, mp)
+	if err != nil {
+		return domain.Entry{}, err
+	}
+	current, err := v.Get(n)
+	if err != nil {
+		return domain.Entry{}, fmt.Errorf("get entry: %w", err)
+	}
+	f := c.applyTo(current.Fields())
+	f.UpdatedAt = s.timestamp()
+	e, err := domain.NewEntry(f)
+	if err != nil {
+		return domain.Entry{}, fmt.Errorf("update entry: %w", err)
+	}
+	if err := v.Replace(e); err != nil {
+		return domain.Entry{}, fmt.Errorf("replace entry: %w", err)
+	}
+	if err := s.store.Save(ctx, mp, v); err != nil {
+		return domain.Entry{}, fmt.Errorf("save vault: %w", err)
+	}
+	return e, nil
 }
 
 func (f ListFilter) matches(e domain.Entry) bool {
